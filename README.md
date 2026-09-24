@@ -5,8 +5,16 @@ iMessage on the Light Phone III with no Mac left running. BrightBubbles runs
 gives [BrightChat](https://github.com/gi-os/BrightChat) the same BlueBubbles API a Mac server
 does, on `127.0.0.1`. BrightChat connects to it the way it connects to a Mac today.
 
-**Status: milestone 1.** The engine builds for arm64 Android and loads. It does not sign in or
-send messages yet.
+**Status: parked (2026-09-24).** The engine builds for arm64 Android and loads. It does not sign
+in or send messages. Work stopped because none of the open ways to get validation data fits the
+hardware available:
+
+- The Mac route reads obfuscated IOKit values (`Gq3489ugfi` and others) that only Intel Macs
+  expose. An Apple silicon Mac does not have them. The code that OpenBubbles uses for other Macs
+  (`open-absinthe`) is closed source.
+- The iPhone route needs an iPhone on iOS 14.0 to 17.0 with TrollStore, online at all times.
+
+Work can continue if an Intel Mac or a spare iPhone becomes available.
 
 ## Why a separate app
 
