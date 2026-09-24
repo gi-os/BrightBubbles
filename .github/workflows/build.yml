@@ -45,9 +45,10 @@ jobs:
 
       - name: Build engine (arm64-v8a)
         working-directory: engine
-        env:
-          ANDROID_NDK_HOME: ${{ env.ANDROID_NDK_LATEST_HOME }}
         run: |
+          # The runner image's newest NDK; a shell variable, not a workflow `env`.
+          export ANDROID_NDK_HOME="$ANDROID_NDK_LATEST_HOME"
+          echo "NDK: $ANDROID_NDK_HOME"
           export RUSTPUSH_REV=$(git -C rustpush rev-parse --short HEAD)
           cargo ndk -t arm64-v8a --platform 34 -o ../app/src/main/jniLibs build --release
           ls -la ../app/src/main/jniLibs/arm64-v8a
