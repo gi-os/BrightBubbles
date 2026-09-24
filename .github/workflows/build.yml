@@ -1,0 +1,116 @@
+name: Build & Release APK
+
+# Every push to main builds the engine (rustpush, Rust, arm64 Android) and the app around it, signs
+# it with the one stable key, and publishes a nightly prerelease. `[release]` in the commit subject,
+# or a manual run with channel=official, publishes an official release instead.
+on:
+  push:
+    branches: [main]
+    paths-ignore: ['**.md']
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      channel:
+        description: 'nightly (prerelease) or official (latest)'
+        type: choice
+        options: [nightly, official]
+        default: nightly
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Prepare rustpush
+        run: ./scripts/prepare-rustpush.sh
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: engine -> target
+
+      - name: Tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq protobuf-compiler
+          cargo install cargo-ndk --locked --version ^3 || true
+
+      - name: Build engine (arm64-v8a)
+        working-directory: engine
+        env:
+          ANDROID_NDK_HOME: ${{ env.ANDROID_NDK_LATEST_HOME }}
+        run: |
+          export RUSTPUSH_REV=$(git -C rustpush rev-parse --short HEAD)
+          cargo ndk -t arm64-v8a -P 34 -o ../app/src/main/jniLibs build --release
+          ls -la ../app/src/main/jniLibs/arm64-v8a
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Pick channel
+        id: channel
+        env:
+          SUBJECT: ${{ github.event.head_commit.message }}
+          DISPATCHED: ${{ inputs.channel }}
+        run: |
+          FIRST=$(printf '%s' "$SUBJECT" | head -1)
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then CH="${DISPATCHED:-nightly}"
+          elif printf '%s' "$FIRST" | grep -qF '[release]'; then CH=official
+          else CH=nightly; fi
+          echo "channel=$CH" >> "$GITHUB_OUTPUT"
+
+      - name: Stamp version
+        id: ver
+        run: |
+          RUN=${{ github.run_number }}
+          BASE=$(grep 'versionName' app/build.gradle.kts | head -1 | sed -E 's/.*"([0-9]+\.[0-9]+).*"/\1/')
+          VERSION="${BASE}.${RUN}"
+          sed -i -E "s/versionCode = .*/versionCode = ${RUN}/" app/build.gradle.kts
+          sed -i -E "s/versionName = \".*\"/versionName = \"${VERSION}\"/" app/build.gradle.kts
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Decode keystore
+        if: github.event_name != 'pull_request'
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ]; then echo '::error::KEYSTORE_BASE64 is not set'; exit 1; fi
+          echo "$KEYSTORE_BASE64" | base64 --decode > brightbubbles-release.jks
+          cat > keystore.properties <<PROPS
+          storeFile=../brightbubbles-release.jks
+          storePassword=${STORE_PASSWORD}
+          keyAlias=${KEY_ALIAS}
+          keyPassword=${KEY_PASSWORD}
+          PROPS
+
+      - name: Build APK
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            env -u CI ./gradlew :app:assembleDebug --stacktrace
+          else
+            ./gradlew :app:assembleRelease --stacktrace
+            cp app/build/outputs/apk/release/app-release.apk BrightBubbles-v${{ steps.ver.outputs.version }}.apk
+          fi
+
+      - name: Release
+        if: github.event_name != 'pull_request'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.channel.outputs.channel == 'official' && format('v{0}', steps.ver.outputs.version) || format('nightly-{0}', steps.ver.outputs.version) }}
+          name: BrightBubbles ${{ steps.ver.outputs.version }}
+          prerelease: ${{ steps.channel.outputs.channel != 'official' }}
+          make_latest: ${{ steps.channel.outputs.channel == 'official' }}
+          files: BrightBubbles-v${{ steps.ver.outputs.version }}.apk

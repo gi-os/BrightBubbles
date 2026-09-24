@@ -1,0 +1,3 @@
+[submodule "engine/rustpush"]
+	path = engine/rustpush
+	url = https://github.com/OpenBubbles/rustpush.git

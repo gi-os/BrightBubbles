@@ -1,0 +1,32 @@
+[package]
+name = "brightbubbles-engine"
+version = "0.1.0"
+edition = "2021"
+license = "SSPL-1.0"
+publish = false
+
+[lib]
+name = "brightbubbles"
+crate-type = ["cdylib"]
+
+[dependencies]
+# OpenBubbles' iMessage engine, pinned by the submodule. Remote anisette for now: an
+# anisette-v3 server (self-hostable) answers Apple's device-attestation headers.
+rustpush = { path = "rustpush", default-features = false, features = ["macos-validation-data", "remote-anisette-v3"] }
+jni = "0.21"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"] }
+log = "0.4"
+android_logger = "0.14"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# rustpush patches quinn at its own workspace root, which Cargo ignores for a dependency; the
+# patch has to be repeated here, at ours.
+[patch.crates-io]
+quinn = { path = "rustpush/third_party/quinn/quinn" }
+
+[profile.release]
+opt-level = "s"
+lto = "thin"
+codegen-units = 4
+strip = true
