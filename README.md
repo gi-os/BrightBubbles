@@ -49,7 +49,7 @@ binary, which you copy from your Mac during setup. This repository does not incl
 
 ```sh
 ./scripts/prepare-rustpush.sh        # submodules over HTTPS, then patch_rustpush.py
-cd engine && cargo ndk -t arm64-v8a -P 34 -o ../app/src/main/jniLibs build --release
+cd engine && cargo ndk -t arm64-v8a --platform 34 -o ../app/src/main/jniLibs build --release
 cd .. && ./gradlew :app:assembleRelease
 ```
 
